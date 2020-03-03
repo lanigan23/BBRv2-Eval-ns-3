@@ -1026,6 +1026,11 @@ TcpBbr::CheckExcessiveLossStartup (Ptr<TcpSocketState> tcb, const struct RateSam
 {
   NS_LOG_FUNCTION (this << tcb << rs);
 
+  if (m_state != BbrMode_t::BBR_STARTUP)
+    {
+      return;
+    }
+
   if (m_isPipeFilled)
     {
       return;
@@ -1270,7 +1275,6 @@ TcpBbr::EnterProbeDown (Ptr<TcpSocketState> tcb)
   ResetCongestionSignals ();
   m_bwProbeUpCount = std::numeric_limits<int>::max ();
   m_roundsSinceProbe = (int) m_uv->GetValue (0, m_bwProbeRandRounds);
-  m_probeWaitTime = m_bwProbeBaseDuration + MicroSeconds (m_uv->GetValue (0, m_bwProbeMaxRandDuration.GetMicroSeconds ()));
   m_cycleStamp = Simulator::Now ();
   m_ackPhase = BbrAckPhase::BBR_ACK_PROBE_STOPPING;
   m_nextRoundDelivered = tcb->m_delivered;

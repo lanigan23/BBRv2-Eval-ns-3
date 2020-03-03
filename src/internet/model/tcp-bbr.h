@@ -400,7 +400,6 @@ protected:
 
   /**
    * \brief Reset congestion signals after bw probing.
-   * \param tcb the socket state.
    */
   void ResetCongestionSignals ();
 
@@ -585,9 +584,6 @@ private:
   uint32_t    m_bwProbeMaxRounds            {63};                //!< Max number of rounds to wait before probing for bandwidth (BBRv2)
   uint32_t    m_bwProbeRandRounds           {2};                 //!< Max amount of randomness to inject in round counting (BBRv2)
   uint32_t    m_roundsSinceProbe            {0};                 //!< The number of rounds since probe (BBRv2)
-  Time        m_probeWaitTime               {Seconds (0)};       //!< The amount of time to wait before probe (BBRv2)
-  Time        m_bwProbeBaseDuration         {Seconds (2)};       //!< The minimum duration for bw probe (BBRV2)
-  Time        m_bwProbeMaxRandDuration      {Seconds (1)};       //!< The upper bound of the random amount of probes (BBRv2)
   uint32_t    m_bwProbeUpCount              {0};                 //!< The amount of packets delivered per increase in inflight_hi (BBRv2)
   uint32_t    m_bwProbeUpAcks               {0};                 //!< The amount of packets (S)Acked per increase in inflight_hi (BBRv2)
   uint32_t    m_bwProbeUpRounds             {0};                 //!< The number of rounds in Probe Up (BBRv2)
