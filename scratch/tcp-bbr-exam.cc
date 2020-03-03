@@ -182,7 +182,7 @@ int main (int argc, char *argv[])
   std::string access_bandwidth = "40Mbps";
   std::string access_delay = "1ms";
   std::string transport_prot = "TcpBbr";
-  TcpBbr::BbrVar variant = TcpBbr::BBR_DELAY;
+  TcpBbr::BbrVar variant = TcpBbr::BBR_V2;
   std::string varstr = WhichVariant (variant);
   std::string scenario = "1";
 

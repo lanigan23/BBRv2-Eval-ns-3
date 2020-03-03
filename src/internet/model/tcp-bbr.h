@@ -103,8 +103,20 @@ public:
   {
     BBR_BW_PROBE_UP = 0,
     BBR_BW_PROBE_DOWN = 1,
-    BBR_BW_PROBE_CRUISE = 2
+    BBR_BW_PROBE_CRUISE = 2,
+    BBR_BW_PROBE_REFILL = 3,
+    BBR_BW_PROBE_NS = 4
   } BbrBwPhase;
+
+  // Relation between the ACK stream and the bandwidth probing
+  typedef enum
+  {
+    BBR_ACKS_INIT,            // Not probing
+    BBR_ACKS_REFILLING,       // Sending at estimated bw to fill pipe
+    BBR_ACK_PROBE_STARTING,   // Inflight rising to probe bw
+    BBR_ACK_PROBE_FEEDBACK,   // Getting feedback from bw probing
+    BBR_ACK_PROBE_STOPPING    // Stopped probing
+  } BbrAckPhase;
 
   /**
    * Assign a fixed random variable stream number to the random variables
@@ -141,8 +153,9 @@ public:
 
   /**
    * \brief Updates variables specific to BBR_PROBE_BW state
+   * \param tcb the socket state.
    */
-  void EnterProbeBW ();
+  void EnterProbeBW (Ptr<TcpSocketState> tcb);
 
   /**
    * \brief Updates variables specific to BBR_PROBE_RTT state
@@ -156,8 +169,9 @@ public:
 
   /**
    * \brief Called on exiting from BBR_PROBE_RTT state, it eithers invoke EnterProbeBW () or EnterStartup ()
+   * \param tcb the socket state.
    */
-  void ExitProbeRTT ();
+  void ExitProbeRTT (Ptr<TcpSocketState> tcb);
 
   virtual std::string GetName () const;
   virtual void PktsAcked (Ptr<TcpSocketState> tcb, uint32_t segmentsAcked,
@@ -372,10 +386,144 @@ protected:
   void SetCycleIndex (BbrBwPhase index);
 
   /**
-   * \brief Checks for the congestion delay signal (Delay-BBR)
-   * \param tcb the socket state
+   * \brief Checks for the congestion delay signal (Delay-BBR).
+   * \param tcb the socket state.
    */
   void CheckCongestionDelay (Ptr<TcpSocketState> tcb);
+
+  /**
+   * \brief Update the congestion signals (BBRv2).
+   * \param tcb the socket state.
+   * \param rs rate sample.
+   */
+  void UpdateCongestionSignals (Ptr<TcpSocketState> tcb, const struct RateSample * rs);
+
+  /**
+   * \brief Reset congestion signals after bw probing.
+   * \param tcb the socket state.
+   */
+  void ResetCongestionSignals ();
+
+  /**
+   * \brief Checks if probing for bandwidth (BBRv2).
+   */
+  bool IsProbingBandwidth ();
+
+  /**
+   * \brief Update bw and inflight lower bounds (BBRv2).
+   * \param tcb the socket state.
+   */
+  void AdaptLowerBounds (Ptr<TcpSocketState> tcb);
+
+  /**
+   * \brief Update bw and inflight upper bounds (BBRv2).
+   * \param tcb the socket state.
+   * \param rs rate sample.
+   */
+  bool AdaptUpperBounds (Ptr<TcpSocketState> tcb, const struct RateSample * rs);
+
+  /**
+   * \brief Check the loss rate in Startup (BBRv2).
+   * \param tcb the socket state.
+   * \param rs rate sample.
+   */
+  void CheckExcessiveLossStartup (Ptr<TcpSocketState> tcb, const struct RateSample * rs);
+
+  /**
+   * \brief Check loss rate for current sample indicates inflight is too high.
+   * \param tcb the socket state.
+   * \param rs rate sample.
+   */
+  bool IsInflightTooHigh (Ptr<TcpSocketState> tcb, const struct RateSample * rs);
+
+  /**
+   * \brief Adapts inflight_hi when loss rate is too high while probing.
+   * \param tcb the socket state.
+   * \param rs rate sample.
+   */
+  void HandleInflightTooHigh (Ptr<TcpSocketState> tcb, const struct RateSample * rs);
+
+  /**
+   * \brief Enter the probe down phase of ProbeBW (BBRv2).
+   * \param tcb the socket state.
+   */
+  void EnterProbeDown (Ptr<TcpSocketState> tcb);
+
+  /**
+   * \brief Enter the probe refill phase of ProbeBW (BBRv2).
+   * \param tcb the socket state.
+   * \param bwProbeUpRounds the number of probe up rounds.
+   */
+  void EnterProbeRefill (Ptr<TcpSocketState> tcb, uint32_t bwProbeUpRounds);
+
+  /**
+   * \brief Enter the probe up phase of ProbeBW (BBRv2).
+   * \param tcb the socket state.
+   */
+  void EnterProbeUp (Ptr<TcpSocketState> tcb);
+
+  /**
+   * \brief Enter the probe cruise phase of ProbeBW (BBRv2).
+   */
+  void EnterProbeCruise ();
+
+  /**
+   * \brief Update the ProbeBW phase (BBRv2).
+   * \param tcb the socket state.
+   * \param rs rate sample.
+   */
+  void UpdateCyclePhase (Ptr<TcpSocketState> tcb, const struct RateSample * rs);
+
+  /**
+   * \brief Each ProbeBw cycle flip bw filter window (BBRv2).
+   */
+  void AdvanceBwHiFilter ();
+
+  /**
+   * \brief Set the target Inflight to the adapted BDP (BBRv2).
+   */
+  uint32_t TargetInflight ();
+
+  /**
+   * \brief Raise inflight_hi when no loss (BBRv2).
+   * \param tcb the socket state.
+   * \param rs rate sample.
+   */
+  void ProbeInflightHighUpward (Ptr<TcpSocketState> tcb, const struct RateSample * rs);
+
+  /**
+   * \brief Double the probing data every round trip of Probe Up in ProbeBW (BBRv2).
+   * \param tcb the socket state.
+   */
+  void RaiseInflightHiSlope (Ptr<TcpSocketState> tcb);
+
+  /**
+   * \brief Check if it is time to probe for bw (BBRv2).
+   * \param tcb the socket state.
+   */
+  bool IsTimeToProbe (Ptr<TcpSocketState> tcb);
+
+  /** 
+   * \brief Check if it is time to transition to Probe Cruise (BBRv2).
+   * \param tcb the socket state.
+   */
+  bool IsTimeToCruise (Ptr<TcpSocketState> tcb);
+
+  /**
+   * \brief Ensure that it is safe to probe to keep coexistence with Reno (BBRv2).
+   */
+  bool IsTimeToProbeRenoCoexistence ();
+
+  /**
+   * \brief Returns an operating point that leaves headroom for other flows when buffer is overfilled (BBRv2).
+   */
+  uint32_t InflightWithHeadroom ();
+
+  /**
+   * \brief Bound cwnd to a sensible level based on probing state, phase and inflight model (BBRv2).
+   * \param tcb the socket state.
+   */
+  void BoundCwndForInflightModel (Ptr<TcpSocketState> tcb);
 
 private:
   BbrMode_t   m_state        {BbrMode_t::BBR_STARTUP};           //!< Current state of BBR state machine
@@ -415,9 +563,40 @@ private:
   Time        m_srtt                        {Seconds (0)};       //!< Smoothed Round Trip Time Signal (Delay-BBR)
   Time        m_baseRtt                     {Time::Max ()};      //!< The base line Round Trip Time during the ProbeBW Phase (Delay-BBR)
   bool        m_congestionDelay             {false};             //!< A boolean to indicate congestion for Delay-BBR
-  double      m_alphaSrtt                   {0.9};               //!< The alpha value for calculating the smoother round trip time (Delay-BBR)
-  double      m_beta                        {1.2};               //!< The Beta value for congestion check for Delay-BBR
+  double      m_alphaSrtt                   {9/10};              //!< The alpha value for calculating the smoother round trip time (Delay-BBR)
+  double      m_beta                        {6/5};               //!< The Beta value for congestion check for Delay-BBR
   SequenceNumber32  m_sentPacketNum         {1};                 //!< The Sequence number of the most recent sent packet (Delay-BBR)
+  uint32_t    m_inflightLo                  {std::numeric_limits<int>::max ()};                 //!< Lower (conservative) bound inflight data based on delivery/loss/ECN signals (BBRv2)
+  uint32_t    m_inflightHi                  {std::numeric_limits<int>::max ()};                 //!< Upper (optimistic) bound inflight data based on delivery/loss/ECN signals (BBRv2)
+  DataRate    m_bwLo                        {std::numeric_limits<int>::max ()};                 //!< Lower (conservative) bound bw rate based on delivery/loss/ECN signals (BBRv2)
+  DataRate    m_bwHi[2]                     {std::numeric_limits<int>::max (), std::numeric_limits<int>::max ()};                 //!< Upper (optimistic) bound bw rate based on delivery/loss/ECN signals (BBRv2)
+  uint32_t    m_inflightLatest              {std::numeric_limits<int>::max ()};                 //!< Latest measurement of the inflight from the current round
+  DataRate    m_bwLatest                    {std::numeric_limits<int>::max ()};                 //!< Latest measurement of the bw from the current round
+  uint32_t    m_lossInRound                 {0};                 //!< The number of losses in the current round trip (BBRv2)
+  uint32_t    m_ecnInRound                  {0};                 //!< The indicator for an ECN mark in the current round trip (BBRv2)
+  uint32_t    m_lossInCycle                 {0};                 //!< The number of losses in the current ProbeBW cycle (BBRv2)
+  uint32_t    m_ecnInCycle                  {0};                 //!< The indicator for an ECN mark in the current ProbeBW cycle (BBRv2)
+  uint32_t    m_startupLossEvents           {0};                 //!< The number of loss events in the current round trip for Startup (BBRv2)
+  uint32_t    m_lossRoundDelivered          {0};                 //!< The delivered at the end of a loss round (BBRv2)
+  uint32_t    m_lossRoundStart              {0};                 //!< The indicator of having delivered at the end of a loss round (BBRv2)
+  uint32_t    m_bbrBeta                     {3/10};              //!< Factor used to scale down inflight and rate for losses (BBRv2)
+  uint32_t    m_fullLossCount               {8};                 //!< The number of loss marking events in Startup, exits Startup after >= N (BBRv2)
+  uint32_t    m_lossThresh                  {2/100};             //!< Loss threshold for inflight data (BBRv2)
+  uint32_t    m_bwProbeMaxRounds            {63};                //!< Max number of rounds to wait before probing for bandwidth (BBRv2)
+  uint32_t    m_bwProbeRandRounds           {2};                 //!< Max amount of randomness to inject in round counting (BBRv2)
+  uint32_t    m_roundsSinceProbe            {0};                 //!< The number of rounds since probe (BBRv2)
+  Time        m_probeWaitTime               {Seconds (0)};       //!< The amount of time to wait before probe (BBRv2)
+  Time        m_bwProbeBaseDuration         {Seconds (2)};       //!< The minimum duration for bw probe (BBRV2)
+  Time        m_bwProbeMaxRandDuration      {Seconds (1)};       //!< The upper bound of the random amount of probes (BBRv2)
+  uint32_t    m_bwProbeUpCount              {0};                 //!< The amount of packets delivered per increase in inflight_hi (BBRv2)
+  uint32_t    m_bwProbeUpAcks               {0};                 //!< The amount of packets (S)Acked per increase in inflight_hi (BBRv2)
+  uint32_t    m_bwProbeUpRounds             {0};                 //!< The number of rounds in Probe Up (BBRv2)
+  BbrAckPhase m_ackPhase                    {BbrAckPhase::BBR_ACKS_INIT};  //!< The Ack phase in relation to bw probing (BBRv2)
+  uint32_t    m_bwProbeSamples              {0};                 //!< The number of of rate samples reflected by the probed bw (BBRv2)
+  bool        m_isRiskyProbe                {false};             //!< Indicates if the last Probe Up was stopped due to any risk (BBRv2)
+  bool        m_prevProbeTooHigh            {false};             //!< Indicates if the last Probe Up went too high (BBRv2)
+  uint32_t    m_inflightHeadroom            {15/100};            //!< The fraction of unutilised headroom to leave in path upon high loss (BBRv2)
+  //TODO tidy variables in respective variants
 };
 
 } // namespace ns3
