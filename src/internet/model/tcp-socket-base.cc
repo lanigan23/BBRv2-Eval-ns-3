@@ -296,6 +296,7 @@ TcpSocketState::TcpSocketState (const TcpSocketState &other)
     m_bytesInFlight (other.m_bytesInFlight),
     m_priorInFlight (other.m_priorInFlight),
     m_delivered (other.m_delivered),
+    m_deliveredEce (other.m_deliveredEce),
     m_deliveredTime (other.m_deliveredTime),
     m_firstSentTime (other.m_firstSentTime),
     m_appLimited (other.m_appLimited)
@@ -1732,6 +1733,7 @@ TcpSocketBase::ReceivedAck (Ptr<Packet> packet, const TcpHeader& tcpHeader)
   // Upon the receipt of any ACK containing SACK information, the
   // scoreboard MUST be updated via the Update () routine (done in ReadOptions)
   bool scoreboardUpdated = false;
+  m_tcb->m_isEce = false;
   ReadOptions (tcpHeader, scoreboardUpdated);
 
   if (scoreboardUpdated)
@@ -1759,6 +1761,7 @@ TcpSocketBase::ReceivedAck (Ptr<Packet> packet, const TcpHeader& tcpHeader)
           m_ecnEchoSeq = ackNumber;
           NS_LOG_DEBUG (TcpSocketState::EcnStateName[m_tcb->m_ecnState] << " -> ECN_ECE_RCVD");
           m_tcb->m_ecnState = TcpSocketState::ECN_ECE_RCVD;
+          m_tcb->m_isEce = true;
         }
     }
 
@@ -4346,6 +4349,7 @@ TcpSocketBase::UpdatePacketSent (SequenceNumber32 seq, uint32_t sz)
   item.m_deliveredTime = m_tcb->m_deliveredTime;
   item.m_isAppLimited  = (m_tcb->m_appLimited != 0);
   item.m_delivered     = m_tcb->m_delivered;
+  item.m_delivereEce   = m_tcb->m_deliveredEce;
   item.m_size          = sz;
   m_pps[seq] = item;
 }
@@ -4367,11 +4371,16 @@ TcpSocketBase::UpdateRateSample (SequenceNumber32 seq)
     }
 
   m_tcb->m_delivered         += item.m_size;
+  if (m_tcb->m_ecnState == TcpSocketState::ECN_ECE_RCVD)
+    {
+      m_tcb->m_deliveredEce += item.m_size;
+    }
   m_tcb->m_deliveredTime      = Simulator::Now ();
 
   if (item.m_delivered > m_tcb->m_rs.m_priorDelivered)
     {
       m_tcb->m_rs.m_priorDelivered   = item.m_delivered;
+      m_tcb->m_rs.m_priorDeliveredEce = item.m_delivereEce;
       m_tcb->m_rs.m_priorTime        = item.m_deliveredTime;
       m_tcb->m_rs.m_isAppLimited     = item.m_isAppLimited;
       m_tcb->m_rs.m_sendElapsed      = item.m_lastSent - item.m_firstSentTime;
@@ -4400,6 +4409,7 @@ TcpSocketBase::GenerateRateSample ()
 
   m_tcb->m_rs.m_interval = std::max (m_tcb->m_rs.m_sendElapsed, m_tcb->m_rs.m_ackElapsed);
   m_tcb->m_rs.m_delivered = m_tcb->m_delivered - m_tcb->m_rs.m_priorDelivered;
+  m_tcb->m_rs.m_deliveredEce = m_tcb->m_deliveredEce - m_tcb->m_rs.m_priorDeliveredEce;
 
   if (m_tcb->m_rs.m_interval < m_tcb->m_minRtt)
     {

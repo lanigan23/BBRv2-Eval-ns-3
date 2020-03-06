@@ -82,6 +82,7 @@ public:
 struct PerPacketState
 {
   uint64_t        m_delivered;
+  uint64_t        m_delivereEce;
   Time            m_deliveredTime;
   Time            m_firstSentTime;
   uint32_t        m_isAppLimited;
@@ -98,7 +99,9 @@ struct RateSample
   uint32_t      m_isAppLimited;   //!< Indicates whether the rate sample is application-limited
   Time          m_interval;       //!< The length of the sampling interval
   uint32_t      m_delivered;      //!< The amount of data marked as delivered over the sampling interval
+  uint32_t      m_deliveredEce;   //!< The amount of data marked as delivered with an ECN mark over the sampling interval
   uint32_t      m_priorDelivered; //!< The delivered count of the most recent packet delivered
+  uint32_t      m_priorDeliveredEce; //!< The delivered count of the most recent packet with ECN mark delivered
   Time          m_priorTime;      //!< The delivered time of the most recent packet delivered
   Time          m_sendElapsed;    //!< Send time interval calculated from the most recent packet delivered
   Time          m_ackElapsed;     //!< ACK time interval calculated from the most recent packet delivered
@@ -258,11 +261,13 @@ public:
   uint32_t               m_priorInFlight     {0};    //!< Prior Bytes in flight
 
   uint64_t               m_delivered		    {0};           //!< The total amount of data in bytes delivered so far
+  uint64_t               m_deliveredEce     {0};           //!< The total amount of data marked with ece delivered so far
   Time                   m_deliveredTime    {Seconds (0)}; //!< Simulator time when m_delivered was last updated
   Time                   m_firstSentTime    {Seconds (0)}; //!< The send time of the packet that was most recently marked as delivered
   uint32_t               m_appLimited		    {0};           //!< The index of the last transmitted packet marked as application-limited
   uint32_t               m_lastAckedSackedBytes {0};       //!< Size of data sacked in the last ack
   uint32_t               m_txItemDelivered      {0};
+  bool                   m_isEce            {false};       //!< Indicates if the ECN mark has been set in the previous ACK
 
   struct RateSample      m_rs;
 

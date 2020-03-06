@@ -524,6 +524,21 @@ protected:
    */
   void BoundCwndForInflightModel (Ptr<TcpSocketState> tcb);
 
+  /**
+   * \brief Update Ecn parameters (BBRv2).
+   * \param tcb the socket state.
+   * \param rs rate sample.
+   */
+  void UpdateEcn (Ptr<TcpSocketState> tcb, const struct RateSample * rs);
+
+  /**
+   * \brief Check if ECN mark rate is above threshold in Startup
+   * \param tcb the socket state.
+   * \param rs rate sample.
+   * \param ratio the ratio of ece bytes delivered to total bytes delivered.
+   */
+  void CheckEcnTooHighStartup (Ptr<TcpSocketState> tcb, const struct RateSample * rs, uint32_t ratio);
+
 private:
   BbrMode_t   m_state        {BbrMode_t::BBR_STARTUP};           //!< Current state of BBR state machine
   MaxBandwidthFilter_t   m_maxBwFilter;                          //!< Maximum bandwidth filter
@@ -573,8 +588,6 @@ private:
   DataRate    m_bwLatest                    {std::numeric_limits<int>::max ()};                 //!< Latest measurement of the bw from the current round
   uint32_t    m_lossInRound                 {0};                 //!< The number of losses in the current round trip (BBRv2)
   uint32_t    m_ecnInRound                  {0};                 //!< The indicator for an ECN mark in the current round trip (BBRv2)
-  uint32_t    m_lossInCycle                 {0};                 //!< The number of losses in the current ProbeBW cycle (BBRv2)
-  uint32_t    m_ecnInCycle                  {0};                 //!< The indicator for an ECN mark in the current ProbeBW cycle (BBRv2)
   uint32_t    m_startupLossEvents           {0};                 //!< The number of loss events in the current round trip for Startup (BBRv2)
   uint32_t    m_lossRoundDelivered          {0};                 //!< The delivered at the end of a loss round (BBRv2)
   uint32_t    m_lossRoundStart              {0};                 //!< The indicator of having delivered at the end of a loss round (BBRv2)
@@ -592,6 +605,14 @@ private:
   bool        m_isRiskyProbe                {false};             //!< Indicates if the last Probe Up was stopped due to any risk (BBRv2)
   bool        m_prevProbeTooHigh            {false};             //!< Indicates if the last Probe Up went too high (BBRv2)
   uint32_t    m_inflightHeadroom            {15/100};            //!< The fraction of unutilised headroom to leave in path upon high loss (BBRv2)
+  uint32_t    m_alphaLastDelivered          {0};                 //!< The previous delivered bytes when the ECN was updated (BBRv2)
+  uint32_t    m_alphaLastDeliveredEce       {0};                 //!< The previous delivered bytes with ece marked when the ECN was updated (BBRv2)
+  uint32_t    m_ecnFactor                   {1/3};               //!< The factor to reduce the inflight_lo once ECN is detected (BBRv2)
+  uint32_t    m_ecnThresh                   {1/2};               //!< The threshold at which CE ratio is max before probing is too much (BBRv2)
+  uint32_t    m_ecnGain                     {1/16};              //!< The factor for ECN mark ratio samples (BBRv2)
+  uint32_t    m_ecnAlpha                    {1};                 //!< Ecn alpha value (BBRv2)
+  uint32_t    m_fullEcnCount                {2};                 //!< The max number of of round trips that startup can go with Ecn rate over the threshold before exiting (BBRv2)
+  uint32_t    m_startupEcnRounds            {0};                 //!< The number of round trips the Ecn rate has been above threshold in startup (BBRv2)
   //TODO tidy variables in respective variants
 };
 
