@@ -231,6 +231,7 @@ int main (int argc, char *argv[])
 
   Config::SetDefault ("ns3::TcpSocketBase::EcnMode", StringValue ("ClassicEcn"));
   Config::SetDefault ("ns3::RedQueueDisc::UseEcn", BooleanValue (true));
+  Config::SetDefault ("ns3::TcpBbr::EnableEcn", BooleanValue (true));
 
   DataRate access_b (access_bandwidth);
   DataRate bottle_b (bandwidth);

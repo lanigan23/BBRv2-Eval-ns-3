@@ -613,6 +613,8 @@ private:
   uint32_t    m_ecnAlpha                    {1};                 //!< Ecn alpha value (BBRv2)
   uint32_t    m_fullEcnCount                {2};                 //!< The max number of of round trips that startup can go with Ecn rate over the threshold before exiting (BBRv2)
   uint32_t    m_startupEcnRounds            {0};                 //!< The number of round trips the Ecn rate has been above threshold in startup (BBRv2)
+  bool        m_enableEcn                   {false};             //!< Use Ecn or not (BBRv2)
+  uint64_t    m_deliveredEce                {0};                 //!< The total amount of data marked with ce delivered (BBRv2)
   //TODO tidy variables in respective variants
 };
 
