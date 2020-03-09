@@ -185,7 +185,7 @@ int main (int argc, char *argv[])
   TcpBbr::BbrVar variant = TcpBbr::BBR_V2;
   std::string varstr = WhichVariant (variant);
   std::string scenario = "1";
-  bool ecn = false;
+  bool ecn = true;
   bool exp = true;
 
   if (variant == TcpBbr::BBR_V2)

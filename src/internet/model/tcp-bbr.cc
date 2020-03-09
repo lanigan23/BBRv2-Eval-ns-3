@@ -1207,8 +1207,17 @@ TcpBbr::TargetInflight ()
 {
   NS_LOG_FUNCTION (this);
   DataRate maxBw = m_bwMax[0] > m_bwMax[1] ? m_bwMax[0] : m_bwMax[1];
-  DataRate minBw = m_bwLo > m_bwHi ? m_bwHi : m_bwLo;
-  DataRate estBw = minBw > m_bwLo ? m_bwLo : maxBw;
+  DataRate estBw;
+  if (m_enableExp)
+    {
+      DataRate minBw = m_bwLo > m_bwHi ? m_bwHi : m_bwLo;
+      estBw = maxBw > minBw ? minBw : maxBw;
+    }
+  else
+    {
+      estBw = maxBw > m_bwLo ? m_bwLo : maxBw;
+    }
+  
   double bdp = estBw * m_rtProp / 8.0;
   double quanta = 3 * m_sendQuantum;
   return bdp + quanta;
