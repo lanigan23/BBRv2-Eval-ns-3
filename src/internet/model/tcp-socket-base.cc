@@ -1759,6 +1759,7 @@ TcpSocketBase::ReceivedAck (Ptr<Packet> packet, const TcpHeader& tcpHeader)
           m_ecnEchoSeq = ackNumber;
           NS_LOG_DEBUG (TcpSocketState::EcnStateName[m_tcb->m_ecnState] << " -> ECN_ECE_RCVD");
           m_tcb->m_ecnState = TcpSocketState::ECN_ECE_RCVD;
+          m_congestionControl->CwndEvent (m_tcb, TcpSocketState::CA_EVENT_ECN_ECE_RCVD);
         }
     }
 

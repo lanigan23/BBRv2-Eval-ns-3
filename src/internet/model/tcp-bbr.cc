@@ -80,6 +80,11 @@ TcpBbr::GetTypeId (void)
                    BooleanValue (false),
                    MakeBooleanAccessor (&TcpBbr::m_enableEcn),
                    MakeBooleanChecker ())
+    .AddAttribute ("EnableExp",
+                   "Whether to use experimental changes or not",
+                   BooleanValue (false),
+                   MakeBooleanAccessor (&TcpBbr::m_enableExp),
+                   MakeBooleanChecker ())
   ;
   return tid;
 }
@@ -618,6 +623,10 @@ TcpBbr::UpdateModelAndState (Ptr<TcpSocketState> tcb, const struct RateSample * 
     }
   if (m_variant == BbrVar::BBR_V2)
     {
+      if (m_enableExp)
+        {
+          m_ecnFactor = 1 / 2;
+        }
       if (m_roundStart)
         {
           m_roundsSinceProbe = m_roundsSinceProbe + 1;
@@ -798,6 +807,10 @@ TcpBbr::CwndEvent (Ptr<TcpSocketState> tcb,
         }
       tcb->m_rs.m_deliveredEce = tcb->m_delivered - tcb->m_rs.m_priorDeliveredEce;
     }
+  else if (event == TcpSocketState::CA_EVENT_ECN_ECE_RCVD)
+    {
+      m_isEce = true;
+    }
 }
 
 uint32_t
@@ -904,7 +917,7 @@ TcpBbr::UpdateCongestionSignals (Ptr<TcpSocketState> tcb, const struct RateSampl
   if (rs->m_deliveryRate > m_maxBwFilter.GetBest () || !rs->m_isAppLimited)
     {
       m_maxBwFilter.Update (rs->m_deliveryRate, m_roundCount);
-      m_bwHi[1] = m_maxBwFilter.GetBest ();
+      m_bwMax[1] = m_maxBwFilter.GetBest ();
     }
 
   m_lossInRound |= (rs->m_packetLoss > 0);
@@ -961,15 +974,26 @@ TcpBbr::AdaptLowerBounds (Ptr<TcpSocketState> tcb)
     }
 
   uint32_t ecnInflightLo = std::numeric_limits<int>::max ();
+  DataRate ecnBwLo (std::numeric_limits<int>::max ());
 
   // Adjust to ECN
   if (m_ecnInRound && m_enableEcn)
     {
+      if (m_enableExp && m_bwLo == std::numeric_limits<int>::max ())
+        {
+          m_bwLo = m_bwMax[0] > m_bwMax[1] ? m_bwMax[0] : m_bwMax[1];
+        }
       if (m_inflightLo == std::numeric_limits<int>::max ())
         {
           m_inflightLo = tcb->m_cWnd;
         }
       ecnInflightLo = m_inflightLo * (1 - (m_ecnAlpha * m_ecnFactor));
+      if (m_enableExp)
+        {
+          uint64_t m_bwLoTmp = m_bwLo.GetBitRate () * (1 - (m_ecnAlpha * m_ecnFactor));
+          DataRate m_bwLoRes (m_bwLoTmp);
+          ecnBwLo = m_bwLoRes;
+        }
     }
   
   // Adjust to loss
@@ -977,7 +1001,7 @@ TcpBbr::AdaptLowerBounds (Ptr<TcpSocketState> tcb)
     {
       if (m_bwLo == std::numeric_limits<int>::max ())
         {
-          m_bwLo = m_bwHi[0] > m_bwHi[1] ? m_bwHi[0] : m_bwHi[1];
+          m_bwLo = m_bwMax[0] > m_bwMax[1] ? m_bwMax[0] : m_bwMax[1];
         }
       if (m_inflightLo == std::numeric_limits<int>::max ())
         {
@@ -990,6 +1014,10 @@ TcpBbr::AdaptLowerBounds (Ptr<TcpSocketState> tcb)
     }
 
     m_inflightLo = std::min (m_inflightLo, ecnInflightLo);
+    if (m_enableExp)
+      {
+        m_bwLo = m_bwLo > ecnBwLo ? ecnBwLo : m_bwLo;
+      }
 }
 
 bool
@@ -1011,7 +1039,7 @@ TcpBbr::AdaptUpperBounds (Ptr<TcpSocketState> tcb, const struct RateSample * rs)
       if (m_state == BbrMode_t::BBR_PROBE_BW && !rs->m_isAppLimited)
         {
           // Current bw sample is best recent max bw so advance window to forget previous samples
-          AdvanceBwHiFilter ();
+          AdvanceBwMaxFilter ();
         }
 
       if (m_state == BbrMode_t::BBR_PROBE_BW && m_isRiskyProbe && !m_prevProbeTooHigh)
@@ -1032,17 +1060,29 @@ TcpBbr::AdaptUpperBounds (Ptr<TcpSocketState> tcb, const struct RateSample * rs)
     }
   else
     {
+      m_bwProbeSampleOk |= m_bwProbeSamples;
+
       // Safe loss rate, adjust upper bound
-      if (m_inflightHi == std::numeric_limits<int>::max ())
+      if (m_enableExp && m_inflightHi == std::numeric_limits<int>::max () && m_bwHi == std::numeric_limits<int>::max ())
         {
           return false;
         }
+      else if (!m_enableExp && m_inflightHi == std::numeric_limits<int>::max ())
+        {
+          return false;
+        }
+      
       
       if (tcb->m_bytesInFlight > m_inflightHi)
         {
           m_inflightHi = tcb->m_bytesInFlight;
         }
       
+      if (m_enableExp && rs->m_deliveryRate > m_bwHi)
+        {
+          m_bwHi = rs->m_deliveryRate;
+        }
+
       if (m_state == BbrMode_t::BBR_PROBE_BW && m_cycleIndex == BbrBwPhase::BBR_BW_PROBE_UP)
         {
           ProbeInflightHighUpward (tcb, rs);
@@ -1102,7 +1142,11 @@ TcpBbr::IsInflightTooHigh (Ptr<TcpSocketState> tcb, const struct RateSample * rs
 
   if (rs->m_deliveredEce > 0 && rs->m_delivered > 0 && m_enableEcn)
     {
-      if (rs->m_deliveredEce >= rs->m_delivered * m_ecnThresh)
+      if (m_enableExp && rs->m_deliveredEce > rs->m_delivered * m_ecnThresh)
+        {
+          return true;
+        }
+      else if (!m_enableExp && rs->m_deliveredEce >= rs->m_delivered * m_ecnThresh)
         {
           return true;
         }
@@ -1119,6 +1163,10 @@ TcpBbr::HandleInflightTooHigh (Ptr<TcpSocketState> tcb, const struct RateSample 
   if (!rs->m_isAppLimited)
     {
       m_inflightHi = std::max (tcb->m_bytesInFlight, TargetInflight () * (1 - m_bbrBeta));
+      if (m_enableExp)
+        {
+          HandleInflightTooHighEcn ();
+        }
     }
   if (m_state == BbrMode_t::BBR_PROBE_BW && m_cycleIndex == BbrBwPhase::BBR_BW_PROBE_UP)
     {
@@ -1127,24 +1175,40 @@ TcpBbr::HandleInflightTooHigh (Ptr<TcpSocketState> tcb, const struct RateSample 
 }
 
 void
-TcpBbr::AdvanceBwHiFilter ()
+TcpBbr::HandleInflightTooHighEcn ()
+{
+  if (m_enableEcn && m_enableExp && m_bwProbeSampleOk)
+    {
+      if (m_bwHi == std::numeric_limits<int>::max ())
+        {
+          m_bwHi = m_bwMax[0] > m_bwMax[1] ? m_bwMax[0] : m_bwMax[1];
+        }
+      uint64_t m_bwHiTmp = m_bwHi.GetBitRate () * (1 - (m_ecnAlpha * m_ecnFactor));
+      DataRate m_bwHiRes (m_bwHiTmp);
+      m_bwHi = m_bwHiRes;
+    }
+}
+
+void
+TcpBbr::AdvanceBwMaxFilter ()
 {
   NS_LOG_FUNCTION (this);
 
-  if (m_bwHi[1] == 0)
+  if (m_bwMax[1] == 0)
     {
       return;
     }
-  m_bwHi[0] = m_bwHi[1];
-  m_bwHi[1] = 0;
+  m_bwMax[0] = m_bwMax[1];
+  m_bwMax[1] = 0;
 }
 
 uint32_t
 TcpBbr::TargetInflight ()
 {
   NS_LOG_FUNCTION (this);
-  DataRate maxBw = m_bwHi[0] > m_bwHi[1] ? m_bwHi[0] : m_bwHi[1];
-  DataRate estBw = maxBw > m_bwLo ? m_bwLo : maxBw;
+  DataRate maxBw = m_bwMax[0] > m_bwMax[1] ? m_bwMax[0] : m_bwMax[1];
+  DataRate minBw = m_bwLo > m_bwHi ? m_bwHi : m_bwLo;
+  DataRate estBw = minBw > m_bwLo ? m_bwLo : maxBw;
   double bdp = estBw * m_rtProp / 8.0;
   double quanta = 3 * m_sendQuantum;
   return bdp + quanta;
@@ -1207,6 +1271,20 @@ TcpBbr::IsTimeToProbe (Ptr<TcpSocketState> tcb)
 {
   NS_LOG_FUNCTION (this << tcb);
   bool isFullLength = (Simulator::Now () - m_cycleStamp) > m_rtProp;
+
+  // If ECN marked and no ECN in ACK, reprobe
+  if (m_enableExp && m_enableEcn && m_ecnInCycle && !m_lossInCycle && !m_isEce)
+    {
+      if (m_inflightHi != std::numeric_limits<int>::max ())
+        {
+          m_inflightHi++;
+          uint64_t m_bwHiTmp = m_bwHi.GetBitRate () + (m_bwHi.GetBitRate () / m_rtProp.GetSeconds ());
+          DataRate newBw (m_bwHiTmp);
+          m_bwHi = newBw;
+        }
+      EnterProbeRefill (tcb, 0);
+      return true;
+    }
 
   if (isFullLength || IsTimeToProbeRenoCoexistence ())
     {
@@ -1339,6 +1417,7 @@ TcpBbr::EnterProbeRefill (Ptr<TcpSocketState> tcb, uint32_t bwProbeUpRounds)
   m_bwProbeUpRounds = bwProbeUpRounds;
   m_bwProbeUpAcks = 0;
   m_isRiskyProbe = false;
+  m_bwProbeSampleOk = 0;
   m_ackPhase = BbrAckPhase::BBR_ACKS_REFILLING;
   m_nextRoundDelivered = tcb->m_delivered;
   SetCycleIndex (BbrBwPhase::BBR_BW_PROBE_REFILL);

@@ -185,6 +185,20 @@ int main (int argc, char *argv[])
   TcpBbr::BbrVar variant = TcpBbr::BBR_V2;
   std::string varstr = WhichVariant (variant);
   std::string scenario = "1";
+  bool ecn = false;
+  bool exp = true;
+
+  if (variant == TcpBbr::BBR_V2)
+    {
+      if (ecn)
+        {
+          varstr += "-ECN";
+        }
+      if (exp)
+        { 
+          varstr += "-EXP";
+        }
+    }
 
  time_t rawtime;
   struct tm * timeinfo;
@@ -229,9 +243,16 @@ int main (int argc, char *argv[])
 
   Config::SetDefault ("ns3::TcpSocket::SegmentSize", UintegerValue (tcp_adu_size));
 
-  Config::SetDefault ("ns3::TcpSocketBase::EcnMode", StringValue ("ClassicEcn"));
-  Config::SetDefault ("ns3::RedQueueDisc::UseEcn", BooleanValue (true));
-  Config::SetDefault ("ns3::TcpBbr::EnableEcn", BooleanValue (true));
+  if (exp)
+    {
+      Config::SetDefault ("ns3::TcpBbr::EnableExp", BooleanValue (true));
+    }
+  if (ecn)
+    {
+      Config::SetDefault ("ns3::TcpSocketBase::EcnMode", StringValue ("ClassicEcn"));
+      Config::SetDefault ("ns3::RedQueueDisc::UseEcn", BooleanValue (true));
+      Config::SetDefault ("ns3::TcpBbr::EnableEcn", BooleanValue (true));
+    }
 
   DataRate access_b (access_bandwidth);
   DataRate bottle_b (bandwidth);

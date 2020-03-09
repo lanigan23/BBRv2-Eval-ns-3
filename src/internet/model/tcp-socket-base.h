@@ -180,6 +180,7 @@ public:
     CA_EVENT_ECN_IS_CE,    /**< received CE marked IP packet. Not triggered */
     CA_EVENT_DELAYED_ACK,  /**< Delayed ack is sent */
     CA_EVENT_NON_DELAYED_ACK, /**< Non-delayed ack is sent */
+    CA_EVENT_ECN_ECE_RCVD  /**< ECE received in ACK */
   } TcpCAEvent_t;
 
   /**

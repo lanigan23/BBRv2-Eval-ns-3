@@ -443,6 +443,11 @@ protected:
   void HandleInflightTooHigh (Ptr<TcpSocketState> tcb, const struct RateSample * rs);
 
   /**
+   * \brief Adapts bw_hi when ecn rate is too high while probing.
+   */
+  void HandleInflightTooHighEcn ();
+
+  /**
    * \brief Enter the probe down phase of ProbeBW (BBRv2).
    * \param tcb the socket state.
    */
@@ -476,7 +481,7 @@ protected:
   /**
    * \brief Each ProbeBw cycle flip bw filter window (BBRv2).
    */
-  void AdvanceBwHiFilter ();
+  void AdvanceBwMaxFilter ();
 
   /**
    * \brief Set the target Inflight to the adapted BDP (BBRv2).
@@ -583,7 +588,8 @@ private:
   uint32_t    m_inflightLo                  {std::numeric_limits<int>::max ()};                 //!< Lower (conservative) bound inflight data based on delivery/loss/ECN signals (BBRv2)
   uint32_t    m_inflightHi                  {std::numeric_limits<int>::max ()};                 //!< Upper (optimistic) bound inflight data based on delivery/loss/ECN signals (BBRv2)
   DataRate    m_bwLo                        {std::numeric_limits<int>::max ()};                 //!< Lower (conservative) bound bw rate based on delivery/loss/ECN signals (BBRv2)
-  DataRate    m_bwHi[2]                     {std::numeric_limits<int>::max (), std::numeric_limits<int>::max ()};                 //!< Upper (optimistic) bound bw rate based on delivery/loss/ECN signals (BBRv2)
+  DataRate    m_bwHi                        {std::numeric_limits<int>::max ()};                 //!< Upper (optimistic) bound bw rate based on delivery/loss/ECN signals (BBRv2)
+  DataRate    m_bwMax[2]                    {std::numeric_limits<int>::max (), std::numeric_limits<int>::max ()};       //!< Max recetn bw sample (BBRv2)
   uint32_t    m_inflightLatest              {std::numeric_limits<int>::max ()};                 //!< Latest measurement of the inflight from the current round
   DataRate    m_bwLatest                    {std::numeric_limits<int>::max ()};                 //!< Latest measurement of the bw from the current round
   uint32_t    m_lossInRound                 {0};                 //!< The number of losses in the current round trip (BBRv2)
@@ -617,6 +623,9 @@ private:
   uint32_t    m_startupEcnRounds            {0};                 //!< The number of round trips the Ecn rate has been above threshold in startup (BBRv2)
   bool        m_enableEcn                   {false};             //!< Use Ecn or not (BBRv2)
   uint64_t    m_deliveredEce                {0};                 //!< The total amount of data marked with ce delivered (BBRv2)
+  bool        m_enableExp                   {false};             //!< Enable experimental changes for BBRv2
+  uint32_t    m_bwProbeSampleOk             {0};                 //!< Indicates if the bw sample had low ECN/loss (BBRv2)
+  bool        m_isEce                       {false};             //!< Set if an ECE was received in the latest ACK (BBRv2)
   //TODO tidy variables in respective variants
 };
 
